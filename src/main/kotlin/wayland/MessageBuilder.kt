@@ -41,6 +41,11 @@ class MessageBuilder (
         val payloadSize = messageLength - 8
         header.size = messageLength.toShort()
 
-        return Message(header, this.buffer.slice(8, payloadSize).order(ByteOrder.nativeOrder()))
+        val payloadBuffer = ByteBuffer.allocate(payloadSize).order(ByteOrder.nativeOrder())
+        this.buffer.position(8)
+        payloadBuffer.put(this.buffer.slice().limit(payloadSize))
+        payloadBuffer.flip()
+
+        return Message(header, payloadBuffer)
     }
 }

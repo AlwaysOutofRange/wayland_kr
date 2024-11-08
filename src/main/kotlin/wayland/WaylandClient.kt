@@ -1,5 +1,6 @@
 package wayland
 
+import java.io.IOException
 import java.net.StandardProtocolFamily
 import java.net.UnixDomainSocketAddress
 import java.nio.ByteBuffer
@@ -24,9 +25,9 @@ internal class WaylandClient {
         while (!socket.finishConnect()) Thread.yield()
     }
 
-    internal fun send(msg: Message) {
+    internal fun send(msg: Message, fd: Int? = null) {
         val buffer = ByteBuffer
-            .allocate(msg.header.size.toInt())
+            .allocateDirect(msg.header.size.toInt())
             .order(ByteOrder.nativeOrder())
 
         buffer.putInt(msg.header.objectId)
@@ -36,15 +37,29 @@ internal class WaylandClient {
 
         buffer.flip()
 
-        while (buffer.hasRemaining()) {
-            socket.write(buffer)
+        if (fd != null) {
+            val fdField = socket.javaClass.getDeclaredField("fd")
+            fdField.isAccessible = true
+            val fdObj = fdField.get(socket)
+            val fdIntField = fdObj.javaClass.getDeclaredField("fd")
+            fdIntField.isAccessible = true
+            val sockFd = fdIntField.getInt(fdObj)
+
+            val result = Native.sendFd(sockFd, buffer, buffer.remaining(), fd)
+            if (result < 0) {
+                throw IOException("Failed to send file descriptor")
+            }
+        } else {
+            while (buffer.hasRemaining()) {
+                socket.write(buffer)
+            }
         }
     }
 
     internal fun receive(): Message? {
-        if (!msgQueue.isEmpty) return msgQueue.poll()
+        msgQueue.poll()?.let { return it }
 
-        if (selector.select(5000) > 0) {
+        if (selector.select(500) > 0) {
             readBuffer.clear()
 
             val bytesRead = socket.read(readBuffer)

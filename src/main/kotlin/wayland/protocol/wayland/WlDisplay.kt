@@ -7,7 +7,7 @@ import wayland.protocol.Event
 import wayland.protocol.WaylandObject
 
 class WlDisplay internal constructor(
-    private val wayland: Wayland,
+    private val wl: Wayland,
     override val objectId: Int = 1
 ) : WaylandObject {
     @Event(opcode = 0)
@@ -16,7 +16,7 @@ class WlDisplay internal constructor(
     }
 
     fun getRegistry(): WlRegistry {
-        val registryId = ++wayland.nextId
+        val registryId = ++wl.nextId
 
         val msg = MessageBuilder(
             MessageHeader(
@@ -25,8 +25,11 @@ class WlDisplay internal constructor(
             )
         ).putInt(registryId).build()
 
-        wayland.send(msg)
+        wl.send(msg)
 
-        return WlRegistry(wayland, registryId)
+        val registry = WlRegistry(wl, registryId)
+        wl.objects.put(registryId, registry)
+
+        return registry
     }
 }
