@@ -10,17 +10,11 @@ class WlShmPool internal constructor(
     override val objectId: Int
 ) : WaylandObject {
     fun createBuffer(offset: Int, width: Int, height: Int, stride: Int, format: WlShm.Format): WlBuffer {
-        val bufferId = ++wl.nextId
+        if (!WlShm.Format.isSupportedFormat(format.value)) {
+            error("Unsupported format: $format")
+        }
 
-        println("""
-            Creating buffer with:
-            bufferId: $bufferId
-            offset: $offset
-            width: $width
-            height: $height
-            stride: $stride
-            format: ${format.value}
-        """.trimIndent())
+        val bufferId = ++wl.nextId
 
         val msg = MessageBuilder(
             MessageHeader(
@@ -39,8 +33,21 @@ class WlShmPool internal constructor(
         wl.send(msg)
 
         val buffer = WlBuffer(wl, bufferId)
-        wl.objects.put(bufferId, buffer)
+        wl.registerObject(buffer)
 
         return buffer
+    }
+
+    fun destroy() {
+        val msg = MessageBuilder(
+            MessageHeader(
+                objectId = this.objectId,
+                opcode = 1 // wl_shm_pool@destroy
+            )
+        ).build()
+
+        wl.send(msg)
+
+        wl.removeObject(objectId)
     }
 }

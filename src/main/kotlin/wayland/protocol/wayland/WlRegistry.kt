@@ -24,6 +24,12 @@ class WlRegistry internal constructor(
         registryObjects.put(name, RegistryObject(name, interface_, version))
     }
 
+    @Event(opcode = 1)
+    fun globalRemove(name: Int) {
+        println("Registry global remove: name=$name")
+        registryObjects.remove(name)
+    }
+
     fun <T : WaylandObject> bind(obj: RegistryObject, interfaceClass: Class<T>): T {
         val newClientId = ++wl.nextId
 
@@ -40,11 +46,10 @@ class WlRegistry internal constructor(
         constructor.isAccessible = true
         val obj = constructor.newInstance(wl, newClientId)
 
-        wl.objects.put(newClientId, obj)
+        wl.registerObject(obj)
 
         return obj
     }
-
 
     fun getObjects(): Map<Int, RegistryObject> = registryObjects
 }

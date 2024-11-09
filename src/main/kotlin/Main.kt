@@ -1,7 +1,10 @@
 import wayland.Wayland
+import wayland.protocol.wayland.WlCallback
 import wayland.protocol.wayland.WlCompositor
 import wayland.protocol.wayland.WlShm
 import wayland.protocol.xdg.XdgWmBase
+import wayland.protocol.xdg.ZXdgDecorationManager
+import wayland.protocol.xdg.ZXdgTopLevelDecoration
 import java.io.File
 import java.io.RandomAccessFile
 import java.nio.channels.FileChannel
@@ -10,28 +13,33 @@ import java.nio.file.StandardOpenOption
 fun main() {
     val wayland = Wayland()
     wayland.connect()
+    // wayland.connect("/tmp/wayland-proxy-0")
+    // wayland.connect("/run/user/1000/wlhax-0")
 
     val display = wayland.getDisplay()
     val registry = display.getRegistry()
 
+    wayland.roundtrip()
+
     var compositor: WlCompositor? = null
     var shm: WlShm? = null
     var wmBase: XdgWmBase? = null
-
-    wayland.processEvents()
+    var zxdg: ZXdgDecorationManager? = null
 
     registry.getObjects().forEach { (_, obj) ->
-        println(obj)
         when (obj.interface_) {
             "wl_compositor" -> compositor = registry.bind(obj, WlCompositor::class.java)
             "wl_shm" -> shm = registry.bind(obj, WlShm::class.java)
             "xdg_wm_base" -> wmBase = registry.bind(obj, XdgWmBase::class.java)
+            "zxdg_decoration_manager_v1" -> zxdg = registry.bind(obj, ZXdgDecorationManager::class.java)
         }
     }
 
-    if (compositor == null || wmBase == null || shm == null) {
+    if (compositor == null || wmBase == null || shm == null || zxdg == null) {
         error("Missing required interfaces")
     }
+
+    wayland.roundtrip()
 
     // IMPORTANT
     val width = 800
@@ -74,6 +82,8 @@ fun main() {
     val surface = compositor.createSurface()
     val xdgSurface = wmBase.getXdgSurface(surface)
     val topLevel = xdgSurface.getToplevel()
+    val topLevelDecoration = zxdg.getTopLevelDecoration(topLevel.objectId)
+    topLevelDecoration.setMode(ZXdgTopLevelDecoration.Mode.SERVER_SIDE)
 
     topLevel.setTitle("Hello from kotlin")
     topLevel.setAppId("com.outofrange.wayland_kt")
@@ -82,26 +92,31 @@ fun main() {
     surface.damage(0, 0, width, height)
     surface.commit()
 
-    val frameTime = 16_000_000
     var lastFrame = System.nanoTime()
+    var callback: WlCallback? = null
 
-    while (true) {
+    Wayland.running = true
+
+    while (Wayland.running) {
+        wayland.roundtrip()
         val now = System.nanoTime()
-        val delta = now - lastFrame
 
-        if (delta >= frameTime) {
+        if (callback?.done == true) callback = null
+
+        if (callback == null) {
+
+            callback = surface.frame()
+            surface.attach(shmBuffer, 0, 0)
             surface.damage(0, 0, width, height)
             surface.commit()
+
             lastFrame = now
         }
 
-        wayland.processEvents()
-
-        val remaining = frameTime - (System.nanoTime() - now)
-        if (remaining > 0) {
-            Thread.sleep(remaining / 1_000_000)
-        }
+        val sleepTime = 16L
+        Thread.sleep(sleepTime)
     }
 
+    fc.close()
     wayland.close()
 }

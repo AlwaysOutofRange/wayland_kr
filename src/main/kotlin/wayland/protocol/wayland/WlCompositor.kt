@@ -22,7 +22,7 @@ class WlCompositor internal constructor(
         wl.send(msg)
 
         val surface = WlSurface(wl, surfaceId)
-        wl.objects.put(surfaceId, surface)
+        wl.registerObject(surface)
 
         return surface
     }

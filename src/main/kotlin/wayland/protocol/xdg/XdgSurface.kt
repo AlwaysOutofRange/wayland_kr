@@ -23,7 +23,7 @@ class XdgSurface internal constructor(
         wl.send(msg)
 
         val toplevel = XdgTopLevel(wl, toplevelId)
-        wl.objects.put(toplevelId, toplevel)
+        wl.registerObject(toplevel)
 
         return toplevel
     }
@@ -43,5 +43,18 @@ class XdgSurface internal constructor(
         ).putInt(serial).build()
 
         wl.send(msg)
+    }
+
+    fun destroy() {
+        val msg = MessageBuilder(
+            MessageHeader(
+                objectId = this.objectId,
+                opcode = 0, // xdg_surface@destroy
+            ),
+        ).build()
+
+        wl.send(msg)
+
+        wl.removeObject(objectId)
     }
 }

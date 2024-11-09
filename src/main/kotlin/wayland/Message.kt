@@ -27,6 +27,20 @@ data class Message(
         return message
     }
 
+    // For now only int supported
+    fun readArray(): Array<Int> {
+        val size = readInt()
+        if (size <= 0) return emptyArray()
+
+        val numInts = size / 4
+        val results = Array<Int>(numInts) { readInt() }
+
+        val padding = (4 - (size % 4)) % 4
+        data.position(data.position() + padding)
+
+        return results
+    }
+
     companion object {
         fun fromBuffer(buffer: ByteBuffer): Message? {
             val objectId = buffer.getInt()
@@ -36,7 +50,7 @@ data class Message(
             if (size - 8 > buffer.remaining()) return null
 
             val data = buffer.slice().limit(size - 8).order(ByteOrder.nativeOrder())
-            buffer.position(buffer.position() + data.limit())
+            buffer.position(buffer.position() + size - 8)
 
             return Message(MessageHeader(objectId, opcode, size), data)
         }

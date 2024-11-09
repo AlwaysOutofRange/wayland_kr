@@ -12,5 +12,4 @@
      -o libwaylandkt.so
 
  # Move the library to a common location
- rm ../resources/native/libwaylandkt.so
  mv libwaylandkt.so ../resources/native/

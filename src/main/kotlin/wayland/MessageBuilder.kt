@@ -19,6 +19,11 @@ class MessageBuilder (
         return this
     }
 
+    fun putFd(): MessageBuilder {
+        putInt(0)
+        return this
+    }
+
     fun putString(value: String): MessageBuilder {
         val bytes = value.toByteArray(Charsets.UTF_8)
         val length = bytes.size + 1

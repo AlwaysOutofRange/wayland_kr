@@ -13,7 +13,6 @@ class XdgWmBase internal constructor(
 ) : WaylandObject {
     @Event(opcode = 0)
     fun ping(serial: Int) {
-        // Must respond to ping
         pong(serial)
     }
 
@@ -29,7 +28,7 @@ class XdgWmBase internal constructor(
         wl.send(msg)
 
         val xdgSurface = XdgSurface(wl, xdgSurfaceId)
-        wl.objects.put(xdgSurfaceId, xdgSurface)
+        wl.registerObject(xdgSurface)
 
         return xdgSurface
     }
@@ -43,5 +42,18 @@ class XdgWmBase internal constructor(
         ).putInt(serial).build()
 
         wl.send(msg)
+    }
+
+    fun destroy() {
+        val msg = MessageBuilder(
+            MessageHeader(
+                objectId = this.objectId,
+                opcode = 1, // xdg_wm_base@destroy
+            )
+        ).build()
+
+        wl.send(msg)
+
+        wl.removeObject(objectId)
     }
 }

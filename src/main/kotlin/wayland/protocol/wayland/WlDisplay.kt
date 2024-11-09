@@ -15,6 +15,29 @@ class WlDisplay internal constructor(
         println("[ERROR] ObjectId: $objectId - ErrorCode: $code - Message: $message")
     }
 
+    @Event(opcode = 1)
+    fun deleteId(objectId: Int) {
+        wl.removeObject(objectId)
+    }
+
+    fun sync(): WlCallback {
+        val callbackId = ++wl.nextId
+
+        val msg = MessageBuilder(
+            MessageHeader(
+                objectId = this.objectId,
+                opcode = 0 // wl_display@sync
+            )
+        ).putInt(callbackId).build()
+
+        wl.send(msg)
+
+        val callback = WlCallback(wl, callbackId)
+        wl.registerObject(callback)
+
+        return callback
+    }
+
     fun getRegistry(): WlRegistry {
         val registryId = ++wl.nextId
 
@@ -28,7 +51,7 @@ class WlDisplay internal constructor(
         wl.send(msg)
 
         val registry = WlRegistry(wl, registryId)
-        wl.objects.put(registryId, registry)
+        wl.registerObject(registry)
 
         return registry
     }

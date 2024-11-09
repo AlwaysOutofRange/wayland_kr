@@ -12,6 +12,21 @@ internal class Native {
         }
 
         @JvmStatic
+        external fun openSocket(path: String): Int
+
+        @JvmStatic
+        external fun closeSocket(fd: Int): Int
+
+        @JvmStatic
+        external fun write(fd: Int, buffer: ByteBuffer, length: Int): Int
+
+        @JvmStatic
         external fun sendFd(sockFd: Int, data: ByteBuffer, dataLength: Int, fd: Int): Int
+
+        @JvmStatic
+        external fun getAvailableBytes(fd: Int): Int
+
+        @JvmStatic
+        external fun readSocket(fd: Int, buffer: ByteBuffer, length: Int): Int
     }
 }
