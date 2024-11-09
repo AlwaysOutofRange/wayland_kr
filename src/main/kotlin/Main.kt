@@ -13,8 +13,6 @@ import java.nio.file.StandardOpenOption
 fun main() {
     val wayland = Wayland()
     wayland.connect()
-    // wayland.connect("/tmp/wayland-proxy-0")
-    // wayland.connect("/run/user/1000/wlhax-0")
 
     val display = wayland.getDisplay()
     val registry = display.getRegistry()
@@ -23,31 +21,35 @@ fun main() {
 
     var compositor: WlCompositor? = null
     var shm: WlShm? = null
-    var wmBase: XdgWmBase? = null
-    var zxdg: ZXdgDecorationManager? = null
+    var xdgWmBase: XdgWmBase? = null
+    var xdgDecorationManager: ZXdgDecorationManager? = null
 
     registry.getObjects().forEach { (_, obj) ->
         when (obj.interface_) {
             "wl_compositor" -> compositor = registry.bind(obj, WlCompositor::class.java)
             "wl_shm" -> shm = registry.bind(obj, WlShm::class.java)
-            "xdg_wm_base" -> wmBase = registry.bind(obj, XdgWmBase::class.java)
-            "zxdg_decoration_manager_v1" -> zxdg = registry.bind(obj, ZXdgDecorationManager::class.java)
+            "xdg_wm_base" -> xdgWmBase = registry.bind(obj, XdgWmBase::class.java)
+            "zxdg_decoration_manager_v1" -> xdgDecorationManager = registry.bind(obj, ZXdgDecorationManager::class.java)
         }
     }
 
-    if (compositor == null || wmBase == null || shm == null || zxdg == null) {
-        error("Missing required interfaces")
+    if (compositor == null || shm == null || xdgWmBase == null || xdgDecorationManager == null) {
+        println("[ERROR] Failed to bind required interfaces")
+        return
     }
 
     wayland.roundtrip()
 
-    // IMPORTANT
-    val width = 800
-    val height = 600
+    val gifBytes = File("/home/outofrange/Projects/wayland_kt/src/main/kotlin/meme.gif").readBytes()
+    val decoder = GifDecoder()
+    val frames = decoder.decode(gifBytes)
+
+    val width = 350
+    val height = 350
     val stride = width * 4
     val size = stride * height
 
-    val shmFile = File.createTempFile("wayland_shm_buffer", null)
+    val shmFile = File.createTempFile("wayland_shm", null)
     shmFile.deleteOnExit()
 
     RandomAccessFile(shmFile, "rw").use { file ->
@@ -55,7 +57,7 @@ fun main() {
     }
 
     val fc = FileChannel.open(shmFile.toPath(), StandardOpenOption.READ, StandardOpenOption.WRITE)
-    val buffer = fc.map(FileChannel.MapMode.READ_WRITE, 0 , size.toLong())
+    val buffer = fc.map(FileChannel.MapMode.READ_WRITE, 0, size.toLong())
 
     val fdField = fc.javaClass.getDeclaredField("fd")
     fdField.isAccessible = true
@@ -65,56 +67,74 @@ fun main() {
     fdIntField.isAccessible = true
     val trueFd = fdIntField.getInt(fdObject)
 
-    for (y in 0 until height) {
-        for (x in 0 until width) {
-            val offset = (y * stride) + (x * 4)
-            buffer.put(offset + 0, 0)          // B
-            buffer.put(offset + 1, 0)          // G
-            buffer.put(offset + 2, 255.toByte()) // R
-            buffer.put(offset + 3, 255.toByte()) // X
-        }
-    }
-    // END IMPORTANT
-
     val pool = shm.createPool(trueFd, size)
     val shmBuffer = pool.createBuffer(0, width, height, stride, WlShm.Format.XRGB8888)
 
     val surface = compositor.createSurface()
-    val xdgSurface = wmBase.getXdgSurface(surface)
-    val topLevel = xdgSurface.getToplevel()
-    val topLevelDecoration = zxdg.getTopLevelDecoration(topLevel.objectId)
-    topLevelDecoration.setMode(ZXdgTopLevelDecoration.Mode.SERVER_SIDE)
+    val xdgSurface = xdgWmBase.getXdgSurface(surface)
+    val xdgTopLevel = xdgSurface.getToplevel()
+    val xdgTopLevelDecoration = xdgDecorationManager.getTopLevelDecoration(xdgTopLevel.objectId)
+    xdgTopLevelDecoration.setMode(ZXdgTopLevelDecoration.Mode.SERVER_SIDE)
 
-    topLevel.setTitle("Hello from kotlin")
-    topLevel.setAppId("com.outofrange.wayland_kt")
+    xdgTopLevel.setTitle("Simple window with a gif")
+    xdgTopLevel.setAppId("org.simple_window")
 
-    surface.attach(shmBuffer, 0, 0)
-    surface.damage(0, 0, width, height)
-    surface.commit()
-
-    var lastFrame = System.nanoTime()
+    var currentFrame = 0
     var callback: WlCallback? = null
 
     Wayland.running = true
 
+    fun clearColor() {
+        buffer.clear()
+        for (y in 0 until height) {
+            for (x in 0 until width) {
+                val offset = (y * stride) + (x * 4)
+                buffer.put(offset + 0, 0.toByte())
+                buffer.put(offset + 1, 0.toByte())
+                buffer.put(offset + 2, 0.toByte())
+                buffer.put(offset + 3, 0.toByte())
+            }
+        }
+    }
+
     while (Wayland.running) {
         wayland.roundtrip()
-        val now = System.nanoTime()
+        val frame = frames[currentFrame]
 
         if (callback?.done == true) callback = null
 
         if (callback == null) {
+            frame.pixels.rewind()
+
+            clearColor()
+
+            for (y in 0 until frame.height) {
+                for (x in 0 until frame.width) {
+                    val bufferOffset = (y * stride) + (x * 4)
+                    val frameOffset = (y * frame.width + x) * 4
+
+                    val r = frame.pixels.get(frameOffset)
+                    val g = frame.pixels.get(frameOffset + 1)
+                    val b = frame.pixels.get(frameOffset + 2)
+                    val a = frame.pixels.get(frameOffset + 3)
+
+                    // BGRA is required for wl_shm e.g Format.XRGB8888
+                    buffer.put(bufferOffset + 0, b)
+                    buffer.put(bufferOffset + 1, g)
+                    buffer.put(bufferOffset + 2, r)
+                    buffer.put(bufferOffset + 3, a)
+                }
+            }
 
             callback = surface.frame()
             surface.attach(shmBuffer, 0, 0)
             surface.damage(0, 0, width, height)
             surface.commit()
 
-            lastFrame = now
+            currentFrame = (currentFrame + 1) % frames.size
         }
 
-        val sleepTime = 16L
-        Thread.sleep(sleepTime)
+        Thread.sleep(frame.delayMs.toLong())
     }
 
     fc.close()
